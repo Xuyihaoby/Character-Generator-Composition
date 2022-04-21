@@ -147,7 +147,7 @@ def conbine_img(new_img, ch, h_start, w_start):
 
 
 if __name__ == '__main__':
-    sample_num = 500
+    sample_num = 5
     dict_ = {
         "images": [],
         "annotations": [],
