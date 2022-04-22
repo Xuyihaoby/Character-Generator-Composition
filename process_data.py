@@ -16,12 +16,14 @@ from albumentations import (
 )
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
+
 # https://blog.csdn.net/qq_43474959/article/details/109849066
 def imgBrightness(img1, c, b):
     rows, cols, channels = img1.shape
     blank = np.zeros([rows, cols, channels], img1.dtype)
-    rst = cv2.addWeighted(img1, c, blank, 1-c, b)
+    rst = cv2.addWeighted(img1, c, blank, 1 - c, b)
     return rst
+
 
 # augment character pic
 def pic_aug(p=0.8):
@@ -36,6 +38,36 @@ def pic_aug(p=0.8):
             Blur(blur_limit=10, p=0.5),
         ], p=0.8),
         ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=45, border_mode=cv2.BORDER_REPLICATE, p=0.8),
+        OneOf([
+            OpticalDistortion(p=0.6),
+            # GridDistortion(p=0.6),
+            PiecewiseAffine(p=0.6),
+        ], p=0.8),
+        OneOf([
+            CLAHE(clip_limit=2),
+            Sharpen(),
+            Emboss(),
+            RandomBrightnessContrast(),
+        ], p=0.8),
+        OneOf(
+            [
+                HueSaturationValue(p=0.8),
+                ChannelShuffle(p=0.9),
+                RGBShift(p=0.95)
+            ], p=0.8
+        )
+    ], p=p)
+
+# augment character pic
+def number_aug(p=0.8):
+    return Compose([
+        GaussNoise(p=0.5),
+        OneOf([
+            MotionBlur(p=0.7),
+            MedianBlur(blur_limit=9, p=0.5),
+            Blur(blur_limit=10, p=0.5),
+        ], p=0.8),
+        # ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, border_mode=cv2.BORDER_REPLICATE, p=0.8),
         OneOf([
             OpticalDistortion(p=0.6),
             # GridDistortion(p=0.6),
@@ -85,7 +117,7 @@ def rndColor(type):
         return random.randint(126, 254), random.randint(126, 254), random.randint(126, 254)
 
 
-def get_character_img():
+def get_character_img(type):
     # generate single character
     fontSize = 120
     width = fontSize
@@ -100,7 +132,10 @@ def get_character_img():
     font = ImageFont.truetype(font_file, int(fontSize + 10))
     draw = ImageDraw.Draw(image)
     # output character
-    char_ = rndChar()
+    if type == 'character':
+        char_ = rndChar()
+    elif type == 'number':
+        char_ = str(random.randint(0, 9))
     draw.text((20, -10), char_, font=font, fill=rndColor(1))
     ch = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
     return ch, char_
@@ -113,13 +148,13 @@ def persppective_transform(img):
     scale3 = random.uniform(0.1, 0.4)
     p1 = np.float32([[0, 0], [cols - 1, 0], [0, rows - 1]])
     # add diversity of the mode
-    if random.uniform(0,1)>0.5:
+    if random.uniform(0, 1) > 0.5:
         p2 = np.float32([[0, rows * (scale3)], [cols * scale1, rows * 0.1], [cols * 0.15, rows * scale2]])
     else:
         p2 = np.float32([[cols * (scale3), 0], [cols * 0.1, rows * scale1], [cols * scale2, rows * 0.15]])
     # p2 = np.float32([[0, rows * 0.1], [cols * 0.8, rows * 0.1], [cols * 0.15, rows * 0.7]])
     M = cv2.getAffineTransform(p1, p2)
-    dst = cv2.warpAffine(img, M, (cols*2, rows*2))
+    dst = cv2.warpAffine(img, M, (cols * 2, rows * 2))
     return dst
 
 
@@ -145,23 +180,51 @@ def conbine_img(new_img, ch, h_start, w_start):
     new_img[h_start:h_start + height, w_start:w_start + width] = dst
     return new_img
 
+def choose_dict_class(type):
+    if type == 'character':
+        dict_ = {
+            "images": [],
+            "annotations": [],
+            "categories": [{'id': 1, 'name': 'A'},
+                           {'id': 2, 'name': 'B'},
+                           {'id': 3, 'name': 'C'},
+                           {'id': 4, 'name': 'D'},
+                           {'id': 5, 'name': 'E'}]
+        }
+        CLASSES = ['A', 'B', 'C', 'D', 'E']
+    else:
+        dict_ = {
+            "images": [],
+            "annotations": [],
+            "categories": [{'id': 1, 'name': '0'},
+                           {'id': 2, 'name': '1'},
+                           {'id': 3, 'name': '2'},
+                           {'id': 4, 'name': '3'},
+                           {'id': 5, 'name': '4'},
+                           {'id': 6, 'name': '5'},
+                           {'id': 7, 'name': '6'},
+                           {'id': 8, 'name': '7'},
+                           {'id': 9, 'name': '8'},
+                           {'id': 10, 'name': '9'}
+                           ]
+        }
+        CLASSES = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+    return dict_, CLASSES
 
 if __name__ == '__main__':
     sample_num = 5
-    dict_ = {
-        "images": [],
-        "annotations": [],
-        "categories": [{'id': 1, 'name': 'A'},
-                       {'id': 2, 'name': 'B'},
-                       {'id': 3, 'name': 'C'},
-                       {'id': 4, 'name': 'D'},
-                       {'id': 5, 'name': 'E'}]
-    }
-    CLASSES = ['A', 'B', 'C', 'D', 'E']
+    dst_path = './combine_images'
+    src_path = 'AllImages/*'
+    type = 'number'
+    # type = 'character'
+    assert type in ['number', 'character']
+
+    # choose dict and CLASSES
+    dict_, CLASSES = choose_dict_class(type)
     label2id = {cat: i for i, cat in enumerate(CLASSES)}
     box_id = 0
-    os.makedirs('./combine_images', exist_ok=True)
-    image_list = glob.glob('AllImages/*')
+    os.makedirs(dst_path, exist_ok=True)
+    image_list = glob.glob(src_path)
 
     img_list = random.sample(image_list, sample_num)
 
@@ -186,13 +249,17 @@ if __name__ == '__main__':
             single_annotations_dict = {
                 'segmentation': [[]]
             }
-            ch, char_ = get_character_img()
+            ch, char_ = get_character_img(type)
             # first augment
-            chara_augmentation = pic_aug(0.9)
+            if type == 'character':
+                chara_augmentation = pic_aug(0.9)
+            elif type == 'number':
+                chara_augmentation = number_aug(0.9)
             ch = chara_augmentation(image=ch)['image']
 
             # then perspective
-            ch = persppective_transform(ch)
+            if type == 'character':
+                ch = persppective_transform(ch)
 
             # get real wh
             ch, _, _ = get_real_wh(ch)
